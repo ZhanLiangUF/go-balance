@@ -4,6 +4,8 @@ import (
   "sync"
   "net"
   "time"
+  "bufio"
+  "log"
 )
 
 type Lookup func(service string) []net.SRV
@@ -19,6 +21,8 @@ type Scheduler struct {
   CustomLookup Lookup
 }
 
+type queue []net.SRV
+
 type Matcher func(uri, host[]byte) string
 
 type Proxy struct {
@@ -29,7 +33,7 @@ type Proxy struct {
 }
 
 type tcpConn struct {
-  rwc net.conn
+  rwc net.Conn
   busy bool
 }
 
@@ -37,25 +41,49 @@ func newConn(c net.Conn) *tcpConn {
   return &tcpConn{c, false}
 }
 
-func (p *Proxy) proxy(src *tcpConn, ) {
-
+// implement read method for bufio
+func (c *tcpConn) Read(b []byte) (int, error) {
+  n, err := c.rwc.Read(b)
+  if c.busy = true; err != nil {
+    c.busy = false
+    return n,err
+  }
 }
 
 func (p *Proxy) Listen(port int) {
   // creates a server
-  l, err := net.ListenTCP("tcp", *net.TCPAddr{Port: port})
-  if Err != nil {
+  l, err := net.ListenTCP("tcp", &net.TCPAddr{Port: port})
+  if err != nil {
     log.Fatal(err)
   }
-
-  defer l.close()
+// close connection will execute at the end of this function
+  defer l.Close()
+  // without a condition with loop repeatedly
   for {
     conn, e := l.Accept()
     if e != nil {
       log.Fatal(err)
     }
     src := newConn(conn)
-    // start concurrent go routine
+    // start concurrent go routine => this is where we read the request
     go p.proxy(src)
   }
 }
+
+  func (p *Proxy) proxy(src *tcpConn ) {
+    // this is to ensure OS will send keepalive messages on the connection
+    // in golang statement can precede conditionals
+    if conn, ok := src.rwc.(*net.TCPConn); ok {
+      conn.SetKeepAlive(true)
+      conn.SetKeepAlivePeriod(5 * time.Minute)
+    }
+    var bufioReaderPool sync.Pool
+    if v := bufioReaderPool.Get(); v != nil {
+      // net.Conn implements io.Reader, io.Writer, and io.Closer interfaces
+      br := v.(*bufio.Reader)
+      br.Reset(src)
+    } else {
+      br := bufio.NewReader(src)
+    }
+
+  }
