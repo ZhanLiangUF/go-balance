@@ -6,6 +6,7 @@ import (
   "time"
   "bufio"
   "log"
+  "io"
 )
 
 type Lookup func(service string) []net.SRV
@@ -36,6 +37,11 @@ type tcpConn struct {
   rwc net.Conn
   busy bool
 }
+
+var (
+	bufioReaderPool     sync.Pool
+	textprotoReaderPool sync.Pool
+)
 
 func newConn(c net.Conn) *tcpConn {
   return &tcpConn{c, false}
@@ -77,13 +83,20 @@ func (p *Proxy) Listen(port int) {
       conn.SetKeepAlive(true)
       conn.SetKeepAlivePeriod(5 * time.Minute)
     }
-    var bufioReaderPool sync.Pool
-    if v := bufioReaderPool.Get(); v != nil {
-      // net.Conn implements io.Reader, io.Writer, and io.Closer interfaces
-      br := v.(*bufio.Reader)
-      br.Reset(src)
-    } else {
-      br := bufio.NewReader(src)
-    }
-
+    br := newBufioReader(src)
+    defer putBufioReader(br)
   }
+
+  func newBufioReader(r io.Reader) *bufio.Reader {
+	if v := bufioReaderPool.Get(); v != nil {
+		br := v.(*bufio.Reader)
+		br.Reset(r)
+		return br
+	}
+	return bufio.NewReader(r)
+}
+
+func putBufioReader(br *bufio.Reader) {
+	br.Reset(nil)
+	bufioReaderPool.Put(br)
+}
