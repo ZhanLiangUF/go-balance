@@ -33,4 +33,13 @@ func main() {
    // At this point, if GC ran, this buffer *might* exist already, in
    // which case it will contain the bytes of the string "dirtyappend"
    fmt.Println(s)
+
+   b := bytes.NewBuffer([]byte("dirtyasdfasdfasdf boost yeah"))
+   // b.ReadBytes(' ')
+   // b.ReadBytes(' ')
+   url, _ := b.ReadBytes('\n')
+   l1 := append(url, byte('\r'), byte('\n'))
+   // fmt.Println(url)
+   // fmt.Println(string(url))
+   fmt.Println(string(l1))
 }

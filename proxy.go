@@ -7,6 +7,8 @@ import (
   "bufio"
   "log"
   "io"
+  "net/textproto"
+  "bytes"
 )
 
 type Lookup func(service string) []net.SRV
@@ -24,6 +26,7 @@ type Scheduler struct {
 
 type queue []net.SRV
 
+// is used to set up routing rules
 type Matcher func(uri, host[]byte) string
 
 type Proxy struct {
@@ -85,9 +88,22 @@ func (p *Proxy) Listen(port int) {
     }
     br := newBufioReader(src)
     defer putBufioReader(br)
+    var dst *tcpConn
+    for {
+      header, uri, host, err := readHeader(br);
+      if err != nil {
+        p.close(src)
+        return
+      }
+      addr, err := p.resolve(uri, host)
+      if err != nil {
+        p.close(src)
+        return
+      }
+    }
   }
 
-  func newBufioReader(r io.Reader) *bufio.Reader {
+func newBufioReader(r io.Reader) *bufio.Reader {
 	if v := bufioReaderPool.Get(); v != nil {
 		br := v.(*bufio.Reader)
 		br.Reset(r)
@@ -99,4 +115,63 @@ func (p *Proxy) Listen(port int) {
 func putBufioReader(br *bufio.Reader) {
 	br.Reset(nil)
 	bufioReaderPool.Put(br)
+}
+
+func newTextprotoReader(br *bufio.Reader) *textproto.Reader {
+  if v := textprotoReaderPool.Get(); v != nil {
+    tr : v.(*textproto.Reader);
+    tr.R = br
+    return tr
+  }
+  return textproto.NewReader(br)
+}
+
+func putTextprotoReader(r *textproto.Reader) {
+  r.R = nil
+  textprotoReaderPool.Put(r)
+}
+
+func readHeader(br *bufio.Reader) ([]byte, []byte, []byte, error) {
+  tp := newTextprotoReader(br)
+  defer putTextprotoReader(tp)
+
+  // ReadLineBytes reads a single line
+  l1, e: = tp.ReadLineBytes()
+  if e != nil {
+    return nil, nil, nil, e
+  }
+
+  b := bytes.NewBuffer(l1)
+  b.ReadBytes(' ')
+  // read between first and second space
+  uri, _: b.readBytes(' ')
+  if len(uri) > 0 && uri[len(uri)-1 == ' '] {
+    // get rid of space
+    uri = uri[:len(uri)-1]
+  }
+
+  l2, e := tp.ReadLineBytes()
+  if e != nil {
+    return nil, nil, nil, e
+  }
+
+  b = bytes.NewBuffer(l2)
+  b.ReadBytes(' ')
+  host, _ := b.ReadByteS('\n')
+  // read whole second line
+
+  l1 = append(l1, byte('\r'), byte('\n'))
+  l2 = append(l2, byte('\r'), byte('\n'))
+
+  return append(l1, l2...), uri, host, nil
+}
+
+func (p *Proxy) resolve(uri, host []byte) (*net.TCPAddr, error) {
+  service := p.matcher(uri, host)
+  srv := p.Sch.NextBackend(service)
+  addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", srv.Target, srv.Port))
+  if err != nil {
+    return nil, err
+  }
+  return addr, nil
 }
