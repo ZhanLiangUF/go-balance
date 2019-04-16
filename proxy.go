@@ -193,6 +193,24 @@ func (p *Proxy) open(addr *net.TCPAddr) *tcpConn {
     return c
   }
 
+  conn, e := net.DialTCP("tcp", nil, addr)
+  if e != nil {
+    return nil
+  }
+
+  c = newConn(conn)
+  c.SetKeepAlive(true)
+  c.SetKeepAlivePeriod(3 * time.Minute)
+
+  p.Lock()
+  defer p.Unlock()
+  if _, ok := p.conns[saddr]; !ok {
+    p.conns[saddr] = make(map[*tcpConn]struct{})
+  }
+  p.conns[saddr][c] = struct{}{}
+
+  return c
+
 }
 // pooling to maintain connection
 func (p *Proxy) get(saddr string) *tcpConn {
