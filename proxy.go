@@ -50,6 +50,13 @@ func newConn(c net.Conn) *tcpConn {
   return &tcpConn{c, false}
 }
 
+func NewProxy(matchFn Matcher) *Proxy {
+  return &Proxy{
+    conns: make(map[string]map[*tcpConn]struct{}),
+    matcher: matchFn,
+  }
+}
+
 // implement read method for bufio
 func (c *tcpConn) Read(b []byte) (int, error) {
   n, err := c.rwc.Read(b)
@@ -100,6 +107,7 @@ func (p *Proxy) Listen(port int) {
         p.close(src)
         return
       }
+      dst = p.open(addr)
     }
   }
 
@@ -130,7 +138,7 @@ func putTextprotoReader(r *textproto.Reader) {
   r.R = nil
   textprotoReaderPool.Put(r)
 }
-
+// read http request and parses it into URI and host, which will be use later to resolve
 func readHeader(br *bufio.Reader) ([]byte, []byte, []byte, error) {
   tp := newTextprotoReader(br)
   defer putTextprotoReader(tp)
@@ -174,4 +182,30 @@ func (p *Proxy) resolve(uri, host []byte) (*net.TCPAddr, error) {
     return nil, err
   }
   return addr, nil
+}
+
+func (p *Proxy) open(addr *net.TCPAddr) *tcpConn {
+  saddr := addr.String()
+  c  := p.get(saddr)
+
+  if c != nil {
+    c.SetReadDeadline(time.Time{})
+    return c
+  }
+
+}
+// pooling to maintain connection
+func (p *Proxy) get(saddr string) *tcpConn {
+  p.Lock()
+  defer p.Unlock()
+  if pool, ok := p.conns[saddr]; ok {
+    for conn := range pool {
+      if conn.busy {
+        continue
+      }
+      // grab a non busy conn
+      return conn
+    }
+  }
+  return nil
 }

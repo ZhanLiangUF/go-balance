@@ -27,6 +27,7 @@ type queue []net.SRV
 
 func NewScheduler(relookup bool, interval time.Duration, custom Lookup) *Scheduler {
   s := Scheduler{
+    // make is use to allocate and initialize
     backends : make(map[string]*queue),
     services: make(map[string][]net.SRV),
     Relookup: relookup,
