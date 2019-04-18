@@ -108,6 +108,30 @@ func (p *Proxy) Listen(port int) {
         return
       }
       dst = p.open(addr)
+      if dst != nil {
+        derr := make(chan error)
+        uerr := make(chan error)
+        dst.Write(header)
+        go cp(dst,br,derr)
+        go cp(src,dst,uerr)
+        for i:=0;i<2;i++ }{
+          select {
+          case <- derr:
+            // down stream closed, stop reading from upstream
+            dst.SetLinger(0)
+            dst.SetReadDeadline(time.Now())
+          case err = <- uerr:
+            // upstream is closed, close downstream
+            p.close(dst)
+            p.close(src)
+          }
+        }
+        close(derr)
+        close(uerr)
+        return
+      }
+      p.close(src)
+      return
     }
   }
 

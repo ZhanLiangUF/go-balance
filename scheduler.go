@@ -36,10 +36,32 @@ func NewScheduler(relookup bool, interval time.Duration, custom Lookup) *Schedul
   }
 
   if relookup {
-    // go s.relookupEvery(interval)
+    // update SRV periodically
+    go s.relookupEvery(interval)
   }
 
   return &s
+}
+
+func (s *Scheduler) relookupEvery(d time.Duration) {
+  ticker := time.NewTicker(d)
+  defer ticker.stop()
+  for {
+    select{
+    case <-ticker.C:
+      s.Lock()
+      services := make([]string, len(s.services))
+      i := 0
+      for k := range s.services {
+        services[i] = k
+        i++
+      }
+      s.Unlock()
+      for _, service := range services {
+        go s.lookup(service)
+      }
+    }
+  }
 }
 
 func (s *Scheduler) NextBackend(service string) net.SRV {
