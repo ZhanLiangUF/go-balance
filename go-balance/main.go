@@ -4,7 +4,10 @@ import (
   "bytes"
   "fmt"
   "sync"
+  "net"
 )
+type queue []net.SRV
+
 var pool = sync.Pool{
     // New creates an object when the pool has nothing available to return.
     // New must return an interface{} to make it flexible. You have to cast
@@ -15,7 +18,6 @@ var pool = sync.Pool{
         return &bytes.Buffer{}
     },
 }
-
 func main() {
   // When getting from a Pool, you need to cast
    s := pool.Get().(*bytes.Buffer)

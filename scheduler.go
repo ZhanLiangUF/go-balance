@@ -43,6 +43,13 @@ func NewScheduler(relookup bool, interval time.Duration, custom Lookup) *Schedul
   return &s
 }
 
+func (s *Scheduler) getSRVs(service string) (backends []net.SRV, ok bool) {
+  s.Lock()
+  backends, ok = s.services[service]
+  s.Unlock()
+  return
+}
+
 func (s *Scheduler) relookupEvery(d time.Duration) {
   ticker := time.NewTicker(d)
   defer ticker.stop()
@@ -69,6 +76,12 @@ func (s *Scheduler) NextBackend(service string) net.SRV {
   if !ok {
     s.lookup(service)
   }
+
+  if q == nil || q.Len() == 0 {
+    s.requeue(service)
+  }
+
+  return s.pop(service)
 }
 
 func (s *Scheduler) getQueue(service string) (q *queue, ok bool) {
@@ -98,4 +111,28 @@ func (s *Scheduler) lookup(service string) error {
   s.services[service] = records
   s.Unlock()
   return nil
+}
+
+func (s *Scheduler) requeue(service string) {
+  records, _ := s.getSRVs(service)
+  nRecords := len(records)
+
+  if nRecords == 0 {
+    return
+  }
+
+  total := uint(0)
+  for _, val := range records {
+    total += uint(val.Weight)
+  }
+
+  unordered := make([]int, nREcords)
+  for i, val := range records{
+    pct := 1.0
+    if total != 0 {
+      pct = float64(val.Weight) / float64(total) * 10
+    }
+    unordered[i] = int(pct)
+  }
+
 }
