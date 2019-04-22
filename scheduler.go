@@ -135,4 +135,22 @@ func (s *Scheduler) requeue(service string) {
     unordered[i] = int(pct)
   }
 
+  ordered := append(unordered[:0:0], unordered...)
+  sort.Ints(ordered)
+
+  q := queue{}
+  max := ordered[nRecords-1]
+  for rep := 1; rep <= max; rep++ {
+    for index := 0; index < nRecords; index++ {
+      if unordered[index]-rep >= 0 {
+        q = append(q, records[index])
+      }
+    }
+  }
+
+  ptr := &q
+  heap.Init(ptr)
+  s.Lock()
+  s.backends[service] = ptr
+  s.Unlock()
 }

@@ -251,3 +251,8 @@ func (p *Proxy) get(saddr string) *tcpConn {
   }
   return nil
 }
+
+func cp(dst io.Writer, src io.Reader, result chan error) {
+  _, err := io.Copy(dst, src)
+  result <- err
+}
