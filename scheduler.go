@@ -126,7 +126,7 @@ func (s *Scheduler) requeue(service string) {
     total += uint(val.Weight)
   }
 
-  unordered := make([]int, nREcords)
+  unordered := make([]int, nRecords)
   for i, val := range records{
     pct := 1.0
     if total != 0 {
@@ -153,4 +153,20 @@ func (s *Scheduler) requeue(service string) {
   s.Lock()
   s.backends[service] = ptr
   s.Unlock()
+}
+
+func (q queue) Len() int { return len(q) }
+func (q queue) Less(i, j int) bool { return q[i].Priority < q[j].Priority}
+func (q queue) Swap(i, j int) bool { q[i], q[j] = q[j], q[i] }
+
+func (q *queue) Push(x iinterface{}) {
+  *q = append(*q, x.(net.SRV))
+}
+
+func (q *queue) Pop() interface{} {
+  old := *q
+	n := len(old)
+	x := old[n-1]
+	*q = old[0 : n-1]
+	return x
 }
