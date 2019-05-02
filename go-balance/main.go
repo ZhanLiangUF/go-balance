@@ -1,10 +1,10 @@
 package main
 
 import (
-  "bytes"
-  "fmt"
-  "sync"
   "net"
+  balance "github.com/zhanlianguf/go-balance"
+  "sync"
+  "bytes"
 )
 type queue []net.SRV
 
@@ -19,29 +19,21 @@ var pool = sync.Pool{
     },
 }
 func main() {
-  // When getting from a Pool, you need to cast
-   s := pool.Get().(*bytes.Buffer)
-   // We write to the object
-   s.Write([]byte("dirty"))
-   // Then put it back
-   pool.Put(s)
 
-   // Pools can return dirty results
+	customLookup := func(service string) []net.SRV {
+		return []net.SRV{
+			{Target: "whoami1.local", Port: 32768, Weight: 50},
+			{Target: "whoami2.local", Port: 32769, Weight: 50},
+		}
+	}
 
-   // Get 'another' buffer
-   s = pool.Get().(*bytes.Buffer)
-   // Write to it
-   s.Write([]byte("append"))
-   // At this point, if GC ran, this buffer *might* exist already, in
-   // which case it will contain the bytes of the string "dirtyappend"
-   fmt.Println(s)
+	matcher := func(uri, host []byte) string {
+		return "test.traefik"
+	}
 
-   b := bytes.NewBuffer([]byte("dirtyasdfasdfasdf boost yeah"))
-   // b.ReadBytes(' ')
-   // b.ReadBytes(' ')
-   url, _ := b.ReadBytes('\n')
-   l1 := append(url, byte('\r'), byte('\n'))
-   // fmt.Println(url)
-   // fmt.Println(string(url))
-   fmt.Println(string(l1))
+	sc := balance.NewScheduler(false, 0, customLookup)
+	p := balance.NewProxy(matcher)
+	p.Sch = sc
+
+	p.Listen(8090)
 }
